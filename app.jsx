@@ -1,5 +1,73 @@
 const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
+// ---------- PIN Gate ----------
+const PIN_CODE = "3311";
+const MAX_ATTEMPTS = 2;
+
+function PinGate({ children }) {
+  const [unlocked, setUnlocked] = useState(false);
+  const [pin, setPin] = useState("");
+  const [attempts, setAttempts] = useState(0);
+  const [error, setError] = useState("");
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (pin === PIN_CODE) {
+      setUnlocked(true);
+    } else {
+      const next = attempts + 1;
+      setAttempts(next);
+      setPin("");
+      if (next >= MAX_ATTEMPTS) {
+        setError("Gesperrt. Zu viele Fehlversuche.");
+      } else {
+        setError("Falscher Code. Noch 1 Versuch.");
+      }
+    }
+  }
+
+  if (unlocked) return children;
+
+  const locked = attempts >= MAX_ATTEMPTS;
+
+  return (
+    <div className="pin-gate">
+      <div className="pin-box">
+        <div className="pin-icon" aria-hidden="true">
+          <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+            <rect x="6" y="14" width="20" height="14" rx="3" stroke="currentColor" strokeWidth="1.6"/>
+            <path d="M10 14v-4a6 6 0 0112 0v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+            <circle cx="16" cy="21" r="2" fill="currentColor"/>
+          </svg>
+        </div>
+        <div className="pin-eyebrow">DB BEGRIFFE</div>
+        <h2 className="pin-title">Zugang <em>geschützt.</em></h2>
+        {locked ? (
+          <p className="pin-error pin-locked">Gesperrt. Zu viele Fehlversuche.</p>
+        ) : (
+          <form className="pin-form" onSubmit={handleSubmit}>
+            {error && <p className="pin-error">{error}</p>}
+            <input
+              type="password"
+              inputMode="numeric"
+              className="pin-input"
+              maxLength={4}
+              value={pin}
+              onChange={e => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+              placeholder="· · · ·"
+              autoFocus
+              autoComplete="off"
+            />
+            <button type="submit" className="ctrl-btn primary pin-submit" disabled={pin.length !== 4}>
+              Entsperren
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ---------- Storage ----------
 const STORAGE_KEY = "db_begriffe_v2";
 
@@ -38,7 +106,7 @@ const CATEGORIES = [
 // ---------- Root ----------
 function App() {
   const [cards, setCards] = useState(loadCards);
-  const [mode, setMode] = useState("karteikarten"); // karteikarten | memory | liste
+  const [mode, setMode] = useState("karteikarten");
   const [activeCat, setActiveCat] = useState("Alle");
   const [editingCard, setEditingCard] = useState(null); // card object or {} for new
   const [showInfo, setShowInfo] = useState(false);
@@ -89,9 +157,6 @@ function App() {
             onEdit={setEditingCard}
             onDelete={deleteCard}
           />
-        )}
-        {mode === "memory" && (
-          <MemoryView cards={visibleCards} />
         )}
         {mode === "liste" && (
           <ListView
@@ -144,7 +209,6 @@ function Header({ mode, setMode, onAdd, onInfo }) {
         <div className="mode-switch" role="tablist">
           {[
             { k: "karteikarten", label: "Flashcards" },
-            { k: "memory", label: "Memory" },
             { k: "liste", label: "Glossar" }
           ].map(o => (
             <button
@@ -197,17 +261,8 @@ function CategoryBar({ activeCat, setActiveCat, cards }) {
 }
 
 // ---------- Footer ----------
-function Footer({ count, total, onReset }) {
-  return (
-    <footer className="site-footer">
-      <div className="rule"></div>
-      <div className="footer-row">
-        <span className="foot-meta">Ril 883.9010 · DB InfraGO</span>
-        <span className="foot-meta">{count} sichtbar · {total} gesamt</span>
-        <button className="link-btn" onClick={onReset}>Zurück auf Standard</button>
-      </div>
-    </footer>
-  );
+function Footer() {
+  return null;
 }
 
 // ============================================================
@@ -420,151 +475,6 @@ function Icon({ name }) {
 }
 
 // ============================================================
-// MEMORY MODE
-// ============================================================
-function MemoryView({ cards: rawCards }) {
-  // Memory needs DE↔EN pairs — filter out cards without an English term
-  const cards = useMemo(() => rawCards.filter(c => c.en && c.en.trim()), [rawCards]);
-  const [pairs, setPairs] = useState(8);
-  const [tiles, setTiles] = useState([]);
-  const [opened, setOpened] = useState([]); // [tileIdx]
-  const [matched, setMatched] = useState(new Set());
-  const [moves, setMoves] = useState(0);
-  const [seconds, setSeconds] = useState(0);
-  const [running, setRunning] = useState(false);
-  const [done, setDone] = useState(false);
-
-  function reset(p = pairs) {
-    const pool = shuffle(cards).slice(0, p);
-    const t = shuffle(pool.flatMap((c, i) => ([
-      { key: "d" + c.id, cardId: c.id, side: "de", text: c.de, idx: i*2 },
-      { key: "e" + c.id, cardId: c.id, side: "en", text: c.en, idx: i*2+1 }
-    ])));
-    setTiles(t);
-    setOpened([]); setMatched(new Set());
-    setMoves(0); setSeconds(0); setRunning(false); setDone(false);
-  }
-
-  // initialize on mount or card change
-  const sig = cards.map(c => c.id).join(",") + ":" + pairs;
-  useEffect(() => { reset(pairs); }, [sig]);
-
-  useEffect(() => {
-    if (!running || done) return;
-    const t = setInterval(() => setSeconds(s => s + 1), 1000);
-    return () => clearInterval(t);
-  }, [running, done]);
-
-  function flipTile(i) {
-    if (done) return;
-    if (opened.includes(i) || matched.has(tiles[i].cardId)) return;
-    if (!running) setRunning(true);
-    const o = [...opened, i];
-    if (o.length === 2) {
-      setMoves(m => m + 1);
-      const [a, b] = o.map(k => tiles[k]);
-      if (a.cardId === b.cardId && a.side !== b.side) {
-        // match
-        setMatched(prev => {
-          const n = new Set(prev); n.add(a.cardId);
-          if (n.size === pairs) { setDone(true); setRunning(false); }
-          return n;
-        });
-        setTimeout(() => setOpened([]), 600);
-      } else {
-        setTimeout(() => setOpened([]), 900);
-      }
-      setOpened(o);
-    } else {
-      setOpened(o);
-    }
-  }
-
-  const maxPairs = Math.min(cards.length, 18);
-  const fmtTime = (s) => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
-
-  if (cards.length < 2) {
-    return <div className="empty"><p>Diese Kategorie enthält keine Karten mit englischer Übersetzung. <em>Memory braucht DE↔EN-Paare.</em> Wähle eine andere Kategorie.</p></div>;
-  }
-
-  return (
-    <div className="memory">
-      <div className="mem-top">
-        <div className="mem-stat">
-          <div className="mem-stat-label">Paare</div>
-          <div className="mem-stat-val">{matched.size} / {pairs}</div>
-        </div>
-        <div className="mem-stat">
-          <div className="mem-stat-label">Züge</div>
-          <div className="mem-stat-val">{moves}</div>
-        </div>
-        <div className="mem-stat">
-          <div className="mem-stat-label">Zeit</div>
-          <div className="mem-stat-val">{fmtTime(seconds)}</div>
-        </div>
-        <div className="mem-controls">
-          <label className="mem-pair-pick">
-            <span>Paare</span>
-            <select value={pairs} onChange={e => setPairs(Number(e.target.value))}>
-              {[6, 8, 10, 12, 15, 18].filter(n => n <= maxPairs).map(n => (
-                <option key={n} value={n}>{n}</option>
-              ))}
-            </select>
-          </label>
-          <button className="ctrl-btn" onClick={() => reset(pairs)}>
-            <Icon name="shuffle"/> <span>Neu mischen</span>
-          </button>
-        </div>
-      </div>
-
-      <div className={"mem-board cols-" + Math.min(6, Math.ceil(Math.sqrt(tiles.length * 1.5)))}>
-        {tiles.map((tile, i) => {
-          const isOpen = opened.includes(i);
-          const isMatched = matched.has(tile.cardId);
-          return (
-            <button
-              key={tile.key + ":" + i}
-              className={"mem-tile " +
-                (isOpen ? "is-open " : "") +
-                (isMatched ? "is-matched " : "") +
-                "side-" + tile.side}
-              onClick={() => flipTile(i)}
-              disabled={isMatched}
-            >
-              <div className="mem-tile-inner">
-                <div className="mem-tile-back">
-                  <span className="mem-tile-mark">{tile.side === "de" ? "DE" : "EN"}</span>
-                </div>
-                <div className="mem-tile-front">
-                  {tile.side === "de" ? (
-                    <span className="mem-de">{tile.text}</span>
-                  ) : (
-                    <em className="mem-en">{tile.text}</em>
-                  )}
-                </div>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      {done && (
-        <div className="mem-done">
-          <div className="mem-done-card">
-            <div className="mem-done-eyebrow">GESCHAFFT</div>
-            <h2>Stapel <em>gelöst.</em></h2>
-            <p>{pairs} Paare · {moves} Züge · {fmtTime(seconds)}</p>
-            <button className="ctrl-btn primary" onClick={() => reset(pairs)}>
-              <Icon name="shuffle"/> <span>Nochmal</span>
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ============================================================
 // LIST / GLOSSAR
 // ============================================================
 function ListView({ cards, onEdit, onDelete }) {
@@ -716,4 +626,4 @@ function InfoModal({ onClose }) {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+ReactDOM.createRoot(document.getElementById("root")).render(<PinGate><App/></PinGate>);
