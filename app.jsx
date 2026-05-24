@@ -1,4 +1,4 @@
-const { useState, useEffect, useMemo, useRef, useCallback } = React;
+const { useState, useEffect, useMemo, useRef } = React;
 
 // ---------- PIN Gate ----------
 const PIN_CODE = "3311";
@@ -40,7 +40,6 @@ function PinGate({ children }) {
             <circle cx="16" cy="21" r="2" fill="currentColor"/>
           </svg>
         </div>
-        <div className="pin-eyebrow">DB BEGRIFFE</div>
         <h2 className="pin-title">Zugang <em>geschützt.</em></h2>
         {locked ? (
           <p className="pin-error pin-locked">Gesperrt. Zu viele Fehlversuche.</p>
@@ -100,7 +99,10 @@ const CATEGORIES = [
   "Trassenelemente & Achsverlauf",
   "Außendienst & Instrumente",
   "Sicherheit, Betrieb & Rollen",
-  "Richtlinie 883.9010"
+  "Richtlinie 883.9010",
+  "Grundsätze & Räume",
+  "Geodäsie & Systeme",
+  "Gleisgeometrie & Trassierung"
 ];
 
 // ---------- Root ----------
@@ -130,12 +132,6 @@ function App() {
   function deleteCard(id) {
     setCards(prev => prev.filter(c => c.id !== id));
   }
-  function resetToDefaults() {
-    if (confirm("Alle Karten auf die ursprünglichen 50 zurücksetzen? Eigene Karten gehen verloren.")) {
-      setCards(window.BEGRIFFE_DEFAULTS.slice());
-    }
-  }
-
   return (
     <div className="app">
       <Header
@@ -167,11 +163,6 @@ function App() {
         )}
       </main>
 
-      <Footer
-        count={visibleCards.length}
-        total={cards.length}
-        onReset={resetToDefaults}
-      />
 
       {editingCard && (
         <CardEditor
@@ -260,11 +251,6 @@ function CategoryBar({ activeCat, setActiveCat, cards }) {
   );
 }
 
-// ---------- Footer ----------
-function Footer() {
-  return null;
-}
-
 // ============================================================
 // KARTEIKARTEN MODE
 // ============================================================
@@ -274,7 +260,8 @@ function KarteikartenView({ cards, onEdit, onDelete }) {
   const [flipped, setFlipped] = useState(false);
   const [known, setKnown] = useState(() => new Set());
   const [autoplay, setAutoplay] = useState(false);
-  const [direction, setDirection] = useState(1); // for animation
+  const [direction, setDirection] = useState(1);
+  const touchRef = useRef(null);
 
   // Reset when card list (length / ids) changes
   const sig = cards.map(c => c.id).join(",");
@@ -357,7 +344,18 @@ function KarteikartenView({ cards, onEdit, onDelete }) {
         </div>
       </div>
 
-      <div className="card-wrap">
+      <div
+        className="card-wrap"
+        onTouchStart={e => { touchRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }}
+        onTouchEnd={e => {
+          if (!touchRef.current) return;
+          const dx = e.changedTouches[0].clientX - touchRef.current.x;
+          const dy = e.changedTouches[0].clientY - touchRef.current.y;
+          touchRef.current = null;
+          if (Math.abs(dx) < 50 || Math.abs(dy) > Math.abs(dx)) return;
+          if (dx < 0) next(); else prev();
+        }}
+      >
         <button className="nav-arrow left" onClick={prev} aria-label="Zurück">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
             <path d="M12 4l-6 6 6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
