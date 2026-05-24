@@ -1,4 +1,4 @@
-const CACHE = 'db-begriffe-v2';
+const CACHE = 'db-begriffe-v3';
 
 const PRECACHE_LOCAL = [
   '/',
@@ -40,6 +40,8 @@ self.addEventListener('activate', evt => {
         keys.filter(k => k !== CACHE).map(k => caches.delete(k))
       ))
       .then(() => self.clients.claim())
+      .then(() => self.clients.matchAll({ type: 'window' }))
+      .then(clients => clients.forEach(c => c.navigate(c.url)))
   );
 });
 
