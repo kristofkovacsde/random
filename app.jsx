@@ -112,6 +112,7 @@ function App() {
   const [activeCat, setActiveCat] = useState("Alle");
   const [editingCard, setEditingCard] = useState(null); // card object or {} for new
   const [showInfo, setShowInfo] = useState(false);
+  const fileInputRef = useRef(null);
 
   useEffect(() => { saveCards(cards); }, [cards]);
 
@@ -119,6 +120,43 @@ function App() {
     if (activeCat === "Alle") return cards;
     return cards.filter(c => c.cat === activeCat);
   }, [cards, activeCat]);
+
+  function exportDeck() {
+    const blob = new Blob([JSON.stringify(cards, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "db-begriffe-deck.json";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function resetDeck() {
+    if (!confirm("Deck auf Standard zurücksetzen? Alle gespeicherten Änderungen gehen verloren.")) return;
+    setCards(window.BEGRIFFE_DEFAULTS.slice());
+    setActiveCat("Alle");
+  }
+
+  function importDeck(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const imported = JSON.parse(reader.result);
+        if (Array.isArray(imported) && imported.every(item => item.de && item.def)) {
+          setCards(imported.map((item, index) => ({ ...item, id: item.id || index + 1 })));
+          setActiveCat("Alle");
+        } else {
+          throw new Error("Ungültiges Format");
+        }
+      } catch (e) {
+        alert("Import fehlgeschlagen. Bitte wählen Sie eine gültige JSON-Datei mit Lernkarten aus.");
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = "";
+  }
 
   function upsertCard(card) {
     setCards(prev => {
@@ -144,6 +182,22 @@ function App() {
         activeCat={activeCat}
         setActiveCat={setActiveCat}
         cards={cards}
+      />
+
+      <DeckBar
+        total={cards.length}
+        visible={visibleCards.length}
+        activeCat={activeCat}
+        onReset={resetDeck}
+        onExport={exportDeck}
+        onImport={() => fileInputRef.current?.click()}
+      />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/json"
+        onChange={importDeck}
+        style={{ display: "none" }}
       />
 
       <main className="stage">
@@ -334,7 +388,7 @@ function KarteikartenView({ cards, onEdit, onDelete }) {
           <div className="kk-progress-track">
             <div className="kk-progress-fill" style={{ width: `${progress}%` }}/>
           </div>
-          <div className="kk-progress-label">
+          <div className="kk-progress-label" role="status" aria-live="polite">
             <span className="kk-idx">{String(idx + 1).padStart(2, "0")}</span>
             <span className="kk-of">/ {String(order.length).padStart(2, "0")}</span>
           </div>
@@ -490,7 +544,7 @@ function ListView({ cards, onEdit, onDelete }) {
       if (!map.has(c.cat)) map.set(c.cat, []);
       map.get(c.cat).push(c);
     }
-    return map;
+    return { map, count: filtered.length };
   }, [cards, query]);
 
   return (
@@ -502,8 +556,11 @@ function ListView({ cards, onEdit, onDelete }) {
           value={query}
           onChange={e => setQuery(e.target.value)}
         />
+        <div className="liste-summary">
+          {grouped.count} Karte{grouped.count === 1 ? "" : "n"} · {grouped.map.size} Kategorie{grouped.map.size === 1 ? "" : "n"}
+        </div>
       </div>
-      {[...grouped.entries()].map(([cat, items]) => (
+      {[...grouped.map.entries()].map(([cat, items]) => (
         <section key={cat} className="liste-section">
           <h3 className="liste-cat">{cat.toUpperCase()}</h3>
           <div className="rule thin"></div>
@@ -524,7 +581,7 @@ function ListView({ cards, onEdit, onDelete }) {
           </div>
         </section>
       ))}
-      {grouped.size === 0 && (
+      {grouped.map.size === 0 && (
         <div className="empty"><p>Keine Treffer für <em>{query}</em>.</p></div>
       )}
     </div>
@@ -583,6 +640,22 @@ function CardEditor({ card, onSave, onCancel, onDelete }) {
           </div>
         </div>
       </form>
+    </div>
+  );
+}
+
+function DeckBar({ total, visible, activeCat, onReset, onExport, onImport }) {
+  return (
+    <div className="deck-bar">
+      <div className="deck-meta">
+        <span>{visible} / {total} Karten sichtbar</span>
+        <span>{activeCat === "Alle" ? "Alle Kategorien" : activeCat}</span>
+      </div>
+      <div className="deck-actions">
+        <button className="ctrl-btn" type="button" onClick={onExport}>Exportieren</button>
+        <button className="ctrl-btn" type="button" onClick={onImport}>Importieren</button>
+        <button className="ctrl-btn primary" type="button" onClick={onReset}>Zurücksetzen</button>
+      </div>
     </div>
   );
 }
