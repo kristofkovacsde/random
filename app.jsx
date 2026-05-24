@@ -107,6 +107,33 @@ const CATEGORIES = [
   "Gleisgeometrie & Trassierung"
 ];
 
+const DIAGRAMME = [
+  {
+    id: 1,
+    title: "Terminologie Erdbauwerk",
+    file: "images/01-terminologie-erdbauwerk.jpg",
+    desc: "Erdbauwerke im Gleisbau – Einschnitt, Damm, Böschung, Planum und Querschnittselemente"
+  },
+  {
+    id: 2,
+    title: "Regelquerschnitt Bahnkörper",
+    file: "images/02-regelquerschnitt-bahnkoerper.png",
+    desc: "Regelquerschnitt Bahnkörper – Schotterbett, Bahnschwellen, Böschung, Entwässerungsgraben, Kabelkanal"
+  },
+  {
+    id: 3,
+    title: "Zustandsterminologie Regelquerschnitt",
+    file: "images/03-zustandsterminologie.png",
+    desc: "Umfassende Zustandsterminologie nach EBO § 5 & DB Ril 883 – SOK, Spurweite, Planum, Erdplanum"
+  },
+  {
+    id: 4,
+    title: "Gleisgeometrie-Fachwörterbuch",
+    file: "images/04-gleisgeometrie-fachworterbuch.png",
+    desc: "Fachwörterbuch Gleisgeometrievermessung nach DIN EN 13848 & EBO – Längs-/Bogengeometrie, Querschnitt"
+  },
+];
+
 // ---------- Root ----------
 function App() {
   const [cards, setCards] = useState(loadCards);
@@ -164,6 +191,7 @@ function App() {
             onDelete={deleteCard}
           />
         )}
+        {mode === "schaubilder" && <DiagrammeView />}
       </main>
 
 
@@ -203,7 +231,8 @@ function Header({ mode, setMode, onAdd, onInfo }) {
         <div className="mode-switch" role="tablist">
           {[
             { k: "karteikarten", label: "Flashcards" },
-            { k: "liste", label: "Glossar" }
+            { k: "liste", label: "Glossar" },
+            { k: "schaubilder", label: "Schaubilder" }
           ].map(o => (
             <button
               key={o.k}
@@ -279,10 +308,10 @@ function KarteikartenView({ cards, onEdit, onDelete }) {
     if (!autoplay) return;
     const t = setTimeout(() => {
       if (!flipped) setFlipped(true);
-      else next();
+      else setIdx(i => (i + 1) % order.length);
     }, flipped ? 3200 : 2200);
     return () => clearTimeout(t);
-  });
+  }, [autoplay, flipped, order.length]);
 
   const card = cards[order[idx]];
   if (!card) {
@@ -624,6 +653,140 @@ function InfoModal({ onClose }) {
         <div className="modal-foot">
           <div></div>
           <button className="ctrl-btn primary" onClick={onClose}>Verstanden</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// SCHAUBILDER / DIAGRAMME
+// ============================================================
+function DiagrammeView() {
+  const [lightboxIdx, setLightboxIdx] = useState(null);
+
+  function open(i) { setLightboxIdx(i); }
+  function close() { setLightboxIdx(null); }
+  function prev() { setLightboxIdx(i => (i - 1 + DIAGRAMME.length) % DIAGRAMME.length); }
+  function next() { setLightboxIdx(i => (i + 1) % DIAGRAMME.length); }
+
+  return (
+    <div className="diagramme">
+      <div className="diagramme-grid">
+        {DIAGRAMME.map((d, i) => (
+          <button key={d.id} className="diagramme-card" onClick={() => open(i)}>
+            <div className="diagramme-thumb">
+              <img src={d.file} alt={d.title} loading="lazy" />
+            </div>
+            <div className="diagramme-info">
+              <div className="diagramme-num">№ {String(d.id).padStart(2, "0")}</div>
+              <div className="diagramme-title">{d.title}</div>
+              <div className="diagramme-desc">{d.desc}</div>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      {lightboxIdx !== null && (
+        <DiagrammeLightbox
+          diagram={DIAGRAMME[lightboxIdx]}
+          idx={lightboxIdx}
+          total={DIAGRAMME.length}
+          onClose={close}
+          onPrev={prev}
+          onNext={next}
+        />
+      )}
+    </div>
+  );
+}
+
+function DiagrammeLightbox({ diagram, idx, total, onClose, onPrev, onNext }) {
+  const [zoomed, setZoomed] = useState(false);
+  const pointerStart = useRef(null);
+
+  // Reset zoom when switching diagrams
+  useEffect(() => { setZoomed(false); }, [diagram.id]);
+
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === "Escape") onClose();
+      else if (e.key === "ArrowRight") { setZoomed(false); onNext(); }
+      else if (e.key === "ArrowLeft") { setZoomed(false); onPrev(); }
+      else if (e.key === "+" || e.key === "z" || e.key === "Z") setZoomed(z => !z);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  return (
+    <div className="lightbox-scrim" onClick={onClose}>
+      <div className="lightbox" onClick={e => e.stopPropagation()}>
+        <div className="lightbox-head">
+          <div className="lightbox-meta">
+            <span className="lightbox-num">{String(idx + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}</span>
+            <span className="lightbox-title">{diagram.title}</span>
+          </div>
+          <div className="lightbox-head-btns">
+            <button
+              className={"lightbox-zoom-btn" + (zoomed ? " is-zoomed" : "")}
+              onClick={() => setZoomed(z => !z)}
+              aria-label={zoomed ? "Verkleinern" : "Vergrößern"}
+              title={zoomed ? "Verkleinern (Z)" : "Vergrößern (Z)"}
+            >
+              {zoomed ? (
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" strokeWidth="1.4"/>
+                  <path d="M10 10l3.5 3.5M4.5 6.5h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" strokeWidth="1.4"/>
+                  <path d="M10 10l3.5 3.5M6.5 4.5v4M4.5 6.5h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                </svg>
+              )}
+            </button>
+            <button className="lightbox-close" onClick={onClose} aria-label="Schließen">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div className={"lightbox-body" + (zoomed ? " is-zoomed" : "")}>
+          <img
+            src={diagram.file}
+            alt={diagram.title}
+            draggable="false"
+            className={"lightbox-img" + (zoomed ? " is-zoomed" : "")}
+            onPointerDown={e => { pointerStart.current = { x: e.clientX, y: e.clientY }; }}
+            onPointerUp={e => {
+              if (!pointerStart.current) return;
+              const dx = Math.abs(e.clientX - pointerStart.current.x);
+              const dy = Math.abs(e.clientY - pointerStart.current.y);
+              pointerStart.current = null;
+              if (dx < 6 && dy < 6) setZoomed(z => !z); // tap only, not drag
+            }}
+          />
+        </div>
+
+        <div className="lightbox-foot">
+          <button className="ctrl-btn" onClick={() => { setZoomed(false); onPrev(); }}>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M9 2L4 7l5 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            <span>Zurück</span>
+            <kbd>←</kbd>
+          </button>
+          <p className="lightbox-desc">{diagram.desc}</p>
+          <button className="ctrl-btn" onClick={() => { setZoomed(false); onNext(); }}>
+            <span>Weiter</span>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M5 2l5 5-5 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            <kbd>→</kbd>
+          </button>
         </div>
       </div>
     </div>
